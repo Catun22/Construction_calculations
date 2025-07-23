@@ -6,48 +6,123 @@
 
 Функции:
     - main(): отвечает за импорт и иницилизацию
-
+    - choose(): отвечает за выбор
+    - get_openings() отвечает за проемы
+    - save_in_file() отвечает за сохранение результата в файл
+    - load() кастомный загрузчик
 """
+import os
+import sys
+import time
+import itertools
 
-from core.parameters import get_wall_size, get_brick_type, get_mortar_type, save_in_file
-from core.calculate import (
-    get_wall_volume,
-    get_brick_volume,
-    get_brick_with_mortar_volume,
-    get_brick_count,
-    get_stock_ratio,
-    get_rounding_up,
-)
+from lib.masonry import Wall, Brick, Calculator
+from lib.validator import entry_validation, valid_openings
 
 
 def main():
-    length, height, thickness = get_wall_size()
-    brick_length, brick_width, brick_height = get_brick_type()
-    mortar = get_mortar_type()
 
-    wall_volume = get_wall_volume(length, height, thickness)
-    brick_volume = get_brick_volume(
-        brick_length, brick_width, brick_height
-    )  
-    brick_and_mortar_volume = get_brick_with_mortar_volume(
-        brick_length, brick_width, brick_height, mortar
-    )
-    brick_count = get_brick_count(wall_volume, brick_and_mortar_volume)
-    stock = get_stock_ratio(brick_count)
-    finish = get_rounding_up(brick_count)
-    finish_coefficient = get_rounding_up(stock)
+    spin = itertools.cycle("🌑"*1+"🌒"*1+"🌓"*1+"🌔"*1 +"🌕"*1+"🌖"*1+"🌗"*1+"🌘"*1)
 
-    result: list[str] =[
-        f"Объем стены: {wall_volume:.2f} м³\n",
-        f"Объем одного кирпича: {brick_volume:.6f} м³\n",
-        f"Объем одного кирпича с раствором: {brick_and_mortar_volume:.6f} м³\n",
-        f"Необходимое количество кирпичей: {brick_count:.2f} шт\n",
-        f"С учетом запаса: {stock:.2f} шт\n",
-        f"Итоговое количество кирпичей (округлено): {finish} шт\n",
-        f"Итоговое количество кирпичей с запасом (округлено): {finish_coefficient} шт\n"]
+    masonry_types = {
+        1: "В половину кирпича",
+        2: "В один кирпич",
+        3: "В полтора кирпича",
+        4: "В два кирпича",
+        5: "В два с половиной кирпича",
+        6: "В три кирпича",
+    }
+    brick_types = {
+        1: "Одинарный (1НФ)",
+        2: "Полуторный (1.4НФ)",
+        3: "Двойной (2.1НФ)",
+    }
+
+    mortar_types = {
+        1: "Тонкий шов",
+        2: "Стандартный шов",
+        3: "Утолщённый шов",
+        4: "Очень толстый шов",
+    }
     
-    save_in_file(result)
-    print("Отчёт загружен в файл save.txt")
+    openings: list[tuple[float, float]] = []
+
+    load(spin=spin) # type: ignore
+
+    print("\nСТРОИТЕЛЬНЫЕ РАСЧЁТЫ КЛАДКИ КИРПИЧА\n")
+    type_id = choose("Выберите тип кладки: ", masonry_types)
+    length = float(entry_validation("Введите длину стены (метры):\n>> "))
+    height = float(entry_validation("Введите высоту стены (метры):\n>> "))
+    brick_id = choose("Выберите тип кирпича: ", brick_types)
+    mortar_id = choose("Выберите тип шва: ", mortar_types)
+    price_per_brick = float(entry_validation("Введите цену за 1 кирпич (₽):\n>> "))
+    price_per_m3 = float(entry_validation("Введите цену за 1 м³ раствора:\n>> "))
+    openings_count = valid_openings("Сколько проёмов (окна или двери)?\n>> ")
+    get_openings(openings=openings, openings_count=openings_count)
+
+    wall = Wall(length=length, height=height, type_id=type_id, openings=openings)
+    brick = Brick(brick_id=brick_id, mortar_id=mortar_id)
+    calc = Calculator(wall=wall, brick=brick)
+    summary = calc.get_summary(
+        price_per_brick=price_per_brick, price_per_m3=price_per_m3
+    )
+    print("\nРЕЗУЛЬТАТ:\n")
+    print(summary)
+    save_in_file(summary)
+
+
+def choose(prompt: str, options: dict[int, str]) -> int:
+    """Функция выбирает тип кирпича, кладки, шва"""
+    while True:
+        print(prompt)
+        for key, value in options.items():
+            print(f"{key}: {value}")  # type: ignore
+        choise = entry_validation("Выберите вариант:\n>> ")
+        if choise in options:
+            return choise
+        print("Неверный выбор, попробуйте снова.\n")
+
+
+def get_openings(*, openings: list, openings_count: int) -> list[tuple[float, float]]:  # type: ignore
+    """Функция берет данные по проемам у пользователя"""
+    for i in range(openings_count):
+        print(f"\nПроем номер {i+1}:")
+        o_width = float(entry_validation("Введите ширину проема (метры): "))
+        o_height = float(entry_validation("Введите высоту проема (метры): "))
+        openings.append((o_width, o_height))  # type: ignore
+
+
+def save_in_file(data: str, /) -> None:
+    """Функция сохраняет в файл .txt"""
+    with open("save.txt", "a", encoding="UTF-8") as f:
+        print()
+        f.write(data + "\n")
+
+def load(*, spin: str):
+    """Загрузчик"""
+    is_windows = sys.platform.startswith("win")
+    is_mac = sys.platform.startswith('darwin')
+    is_linux = sys.platform.startswith('linux')
+
+    clear_command = ""
+
+    if is_windows:
+        clear_command = "cls"
+    elif is_mac:
+        clear_command = "clear"
+    elif is_linux:
+        clear_command = "clear"
+    else:
+        print("Полный фунционал программы поддерживается только на: Linux, macOS, Windows.")
+
+    os.system(clear_command)
+
+    for i in range(101):
+        sym = next(spin) # type: ignore
+        print(f"\rЗагрузка: {i}% {sym}", end="", flush=True)
+        time.sleep(0.1)
+    print("\n")
+
 
 if __name__ == "__main__":
     main()
